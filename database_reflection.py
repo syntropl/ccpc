@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, MetaData, not_
 from sqlalchemy.ext.declarative import declarative_base
+
+#from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -37,8 +38,37 @@ class Exercise_Group(Base):
     
     __table__ = Base.metadata.tables['exercise_groups']
 
+    current_variant_id = __table__.c.current_variant_id
+    current_variant = relationship("Exercise_Variant")
+
+    
     def GetRecordsOfThis(self):
-        ex = session.query(Variant_Planned_Or_Executed).filter_by(executed_date is not None)
+        all_executed_work_in_this_group = session.query(Variant_Planned_Or_Executed)\
+            .filter(Variant_Planned_Or_Executed.group_id == self.id)\
+            .filter(Variant_Planned_Or_Executed.executed_datetime != None)\
+            .filter(Variant_Planned_Or_Executed.is_warmup == 0)\
+            .filter(Variant_Planned_Or_Executed.is_early_attempt_aka_consolidation == 0)\
+            .filter(Variant_Planned_Or_Executed.self_eval_TECHNICAL_CORRECTNESS > 6)\
+            .filter(Variant_Planned_Or_Executed.self_eval_WAS_FULLY_EXECUTED == 1)\
+            .all()
+
+        return all_executed_work_in_this_group
+        
+        
+    def GetHighestAcceptableWorkRecord(self):
+        highest_executed_step = 0
+        candidate = None
+        for record in self.GetRecordsOfThis():
+            print(f"highest_executed_step {highest_executed_step }")
+            candidate  = record.variant
+            print(f"candidate = {candidate.id} {candidate.name}")
+            print(f"step = {candidate.id %10}")   
+            if candidate.id % 10   > highest_executed_step:
+                highest_executed_step = candidate.id %10
+        return candidate
+
+    def GetSublevelofVariant(self):
+        return
 
 #               get sessions with this group
 #     #         find variant with highest id where both eval are acceptable
@@ -46,11 +76,21 @@ class Exercise_Group(Base):
                     # squats:shoulderstand:2
                     # etc
 
+
+    
+
 class Exercise_Variant(Base):
      __table__ = Base.metadata.tables['exercise_variants']
+     group_id = __table__.c.group_id
+     exercise_group = relationship("Exercise_Group")
 
 class Variant_Planned_Or_Executed(Base):
      __table__ = Base.metadata.tables['work_planned_or_executed']
+     group_id = __table__.c.exercise_group_id
+     group = relationship("Exercise_Group")
+     variant_id = __table__.c.exercise_variant_id
+     variant = relationship("Exercise_Variant") 
+
 
 class User(Base):
     __table__ = Base.metadata.tables['user']
@@ -151,11 +191,23 @@ class Program(Base):
         nearestWorkDate = DateOfNearestSpecificDayOfWeek(nearestWorkWeekday)
         print(f"nearest work weekday: {nearestWorkDate}\n\n")
         return nearestWorkDate
+    
+    def UpdateProgressLevels():
+        
+        
+        print("TODO -> fetch executed sessions evaulated good or better and in each group update variant and sublevel")
+
+
+
+
+        return
 
 
 
 class Exercise_Work_Session_For_Day(Base): 
     __table__=Base.metadata.tables['exercise_work_sessions_for_program_days']
+    program_id = __table__.c.program_id
+    program = relationship("Program")
     exercise_group_id = __table__.c.exercise_group_id 
     group = relationship("Exercise_Group")
     # def GetGroupName(self):
@@ -279,11 +331,15 @@ print("\n")
 
 
     #exercise_variants = session.query(Exercise_Variant).all()
-# variant_planned_or_executed
 
-def Get_Progress_Status(exercise_group_id):
-    for group in exercise_groups:
-        print()
+
+    # query = session.query(Variant_Planned_Or_Executed).filter_by(exercise_variant_id = 23)
+    # print(f"work recorded with variant 23 {query.first()}")
+for group in session.query(Exercise_Group).all():
+    print("\n")
+    print(group.name)
+    group.GetHighestAcceptableWorkRecord()
+    print("\n")
 
 print("____________________________________________________END")
 print("\n")
