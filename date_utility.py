@@ -29,6 +29,14 @@ def DateOfNearestSpecificDayOfWeek(workingWeekday: int):
         dayDelta = 7 - (todayWeekday - workingWeekday)
         return todayDate + timedelta(dayDelta)
 
+def ConvertWeekdayIntInto_SunSat_enum(weekdayWhereZeroIsMonday : int):
+    return (weekdayWhereZeroIsMonday + 1) % 7
+ 
+def TodayWeekday():
+    weekday =  ConvertWeekdayIntInto_SunSat_enum(datetime.now().weekday())
+    return weekday
+
+
 
 
 
