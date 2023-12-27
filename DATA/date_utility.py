@@ -14,20 +14,19 @@ def Int_To_Weekday(integer: int):
 
 def DateOfNearestSpecificDayOfWeek(workingWeekday: int):
     """argument: int weekday /// sunday-saturday as 0-6/// returns a datetime"""
-    if workingWeekday not in range(0,6):
+    if workingWeekday not in range(0, 7):  # include 6 in range
         raise ValueError("workingWeekday must be an integer between 0 and 6")
 
-    todayDate = datetime.now().date()
-    todayWeekday = datetime.now().weekday()
+    todayDate = datetime.now()
+    todayWeekday = todayDate.weekday()
     dayDelta = 0
+
     if todayWeekday < workingWeekday:
         dayDelta = workingWeekday - todayWeekday
-        return todayDate + timedelta(dayDelta)
-    if todayWeekday == workingWeekday:
-        return todayDate
-    if todayWeekday > workingWeekday:
+    elif todayWeekday > workingWeekday:
         dayDelta = 7 - (todayWeekday - workingWeekday)
-        return todayDate + timedelta(dayDelta)
+
+    return todayDate + timedelta(days=dayDelta)
 
 def ConvertWeekdayIntInto_SunSat_enum(weekdayWhereZeroIsMonday : int):
     return (weekdayWhereZeroIsMonday + 1) % 7

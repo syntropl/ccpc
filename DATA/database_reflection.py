@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, time
 from sqlalchemy import func
-from sqlalchemy import create_engine, MetaData, Column, Integer, not_
+from sqlalchemy import create_engine, MetaData, Column, DateTime, Integer, not_
 # from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import declarative_base
 
@@ -33,18 +33,22 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 def WRITE_TO_DATABASE(db_session, ormRowObject):
-    print("adding new row to database")
     try:
-        db_session.add(row)
+        db_session.add(ormRowObject)
         db_session.commit()
-        print("new row added to database")
-        return row
+        print(f"new row added to database: : {ormRowObject} \n")
+        return ormRowObject
     except SQLAlchemyError as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred: {e}\n\n")
         db_session.rollback()
         return None
     
+# Access the 'workouts' table
+workouts_table = metadata.tables['workouts']
 
+# Reconfigure 'date_planned' and 'date_executed' to be DateTime
+workouts_table.columns['date_planned'].type = DateTime()
+workouts_table.columns['date_executed'].type = DateTime()
 
 #___ i dont know yet where to put it:
 weekdays = {"Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6}
@@ -82,7 +86,7 @@ class Exercise_Group(Base):
         highest_executed_step = 0
         candidate_record = None       
         for record in self.GetRecordsOfThis():
-            # ignore incomplete records
+            # ignore incomplete 
             if\
                 record.variant_id is  None \
                 or record.exercise_variant_sublevel is None:
@@ -149,6 +153,28 @@ class Exercise_Group(Base):
         if self.current_variant_sublevel is None:
             print(f"{self.name}: current_variant_sublevel was not set ")
 
+    def GetSetsAmountForCurrentSublevel(self): ## this should be refactored to limit redundant code with getRepsInset....
+        v = self.current_variant
+        if v == [] or v==None:
+            print("user advancement level is not set")
+            print("TODO -> calculate user advancement level and store it in excercise group rows in function: Excercise_Group.GetSublevelOfCurrentVariant()")
+            self.UpdateUserAdvanecmentLevel()
+
+        else:
+            sublevel = self.current_variant_sublevel
+            # sets = -1   # this code could be used to get sets as well
+            # # reps = -1
+
+            sets = v.SublevelSetsAmount(self.current_variant_sublevel)
+            # reps = v.SublevelRepsInSet(sublevel)
+
+            # unit = 'reps'
+            # if v.read_reps_as_seconds:
+            #     unit = 'seconds'
+            
+            # print(f"{v.name} sublevel: {sublevel}")
+            # print(f"{sets} sets of {reps} {unit}")
+        return sets              
 
         
     def GetRepsInSetForCurrentSublevel(self): 
@@ -215,7 +241,7 @@ class Exercise_Variant(Base):
              raise ValueError("sublevel must be 1-3")
          
 class Variant_Planned_Or_Executed(Base):
-     __table__ = Base.metadata.tables['work_planned_or_executed']
+     __table__ = Base.metadata.tables['variants_planned_or_executed']
      
      workout_id = __table__.c.workout_id
      workout = relationship("Workout")
@@ -231,8 +257,7 @@ class Workout(Base):
     they are linked by foreign key field .workout in Variant_Planned_Or_Executed. 
     It is intended to be used to streamline data gathering for presentation in user's workout session'''
     __table__ = Base.metadata.tables['workouts']
-
-    # elements = relationship("Variant_Planned_Or_Executed", secondary="work_planned_or_executed")
+   
 
     def AddPlannedWork(
         self,
@@ -243,6 +268,8 @@ class Workout(Base):
         planned_reps : int
     ):
         # TYPE CHECKS AND ERROR MESSAGES
+
+        print(f"AddPlannedWork called with execrise {exercise_variant_id}")
 
         if not isinstance(exercise_variant_id, int) or not (0 <= exercise_variant_id <= 60):
             raise ValueError("exercise_variant must be an integer between 0 and 60") #because this is how many exercises are in convict conditining book by paul wade
@@ -260,14 +287,15 @@ class Workout(Base):
 
 
         variant_planned = Variant_Planned_Or_Executed(
-            exercise_variant_id =exercise_variant_id,
+            group_id = exercise_variant_id %10,
+            variant_id =exercise_variant_id,
             exercise_variant_sublevel=exercise_variant_sublevel,
             is_warmup=is_warmup,
             is_early_attempt_aka_consolidation=is_early_attempt_aka_consolidation,
             workout_id = self.id,
             planned_reps = planned_reps
         )
-        print(f"writing plan to database: {variant_planned.variant.name} {variant_planned.planned_reps} reps")
+        # print(f"writing plan to database: {variant_planned.variant.name} {variant_planned.planned_reps} reps")
         
         WRITE_TO_DATABASE(session, variant_planned)
         
@@ -295,20 +323,29 @@ class Workout(Base):
             planned_reps=reps
         ) 
     def PlanSequence(self, group1:Exercise_Group, group2: Exercise_Group, group3=None):
+        print(f"_______________________________________PLANNING A SEQUENCE {self.date_planned.time()}")
         groups = []
         groups.append(group1)
         groups.append(group2)
+        
+        
         if group3:
             groups.append(group3)
-        
+
         for group in groups:
-            level = group.current_variant % 10
+            print(f"\n\ngathering    {group.name} level data:")
+            level = group.current_variant.id % 10
             variant_id = group.current_variant_id
             sublevel = group.current_variant_sublevel
+
+            print(f"        level {level}")
+            print(f"        variant_id {variant_id}")
+            print(f"        sublevel {sublevel}")
             
+            print(f"\n    Adding {group.name} warmup")
             ## PLAN WARMUPS
             if level == 1:
-                break
+                print("        exercise level == 1. no warmup needed")
             if level == 2:
                 self.AddWarmup(variant_id-1, 15)
             if level == 3:
@@ -325,21 +362,23 @@ class Workout(Base):
                 self.AddWarmup(variant_id-2, 10)                   
             if level > 6:
                 self.AddWarmup(variant_id-5, 15)
-                self.AddWarmup(variant_id-3, 10)   
+                self.AddWarmup(variant_id-3, 10)
 
+            
             ## ADD WORK SESSIONS
+            print(f"\n    Adding {group.name} work")
 
-            sets =group.current_variant.SublevelSetsAmount()
-            reps = group.current_variant.SublevelRepsInSet()
-            # number of sets
-
-            for set in range(sets):
+            sets_in_workout =group.GetSetsAmountForCurrentSublevel()
+            reps_in_set = group.GetRepsInSetForCurrentSublevel()
+            for set in range(1, sets_in_workout+1):
+                print(f"adding set {set} of {sets_in_workout+1}")
                 self.AddPlannedWork(
                     variant_id,
                     sublevel,
                     is_warmup = 0,
                     is_early_attempt_aka_consolidation= 0,
-                    planned_reps=reps)
+                    planned_reps=reps_in_set
+                )
 
     
 
@@ -355,14 +394,31 @@ class User(Base):
         print("_________________________________")
         print("\n")
         for workout in workouts:
-            print(f"workout date:  {workout.date_planned} ")
-            moves = session.query(Variant_Planned_Or_Executed).filter_by(workout_id = workout.id)
+            print(f"workout date: {workout.date_planned}")
+            moves = session.query(Variant_Planned_Or_Executed).filter_by(workout_id = workout.id).all()
             for move in moves:
-                print(move.variant.name)
+                print(f"{move.variant.name}")
             print("\n\n")
+    
+    def set_workout_time(self, workout_index_in_a_day, hour, minute):
+        # Create a time object
+        workout_time = time(hour, minute).strftime('%H:%M')
 
+        # Assign the time object to the correct column based on workout_index_in_a_day
+        if workout_index_in_a_day == 1:
+            self.workout_1_default_time = workout_time
+            
+        elif workout_index_in_a_day == 2:
+            self.workout_2_default_time = workout_time
+        elif workout_index_in_a_day == 3:
+            self.workout_3_default_time = workout_time
+        else:
+            print("Invalid workout index. Choose 1, 2, or 3.")
+            return
 
- 
+        # Commit changes to the database
+        session.add(self)
+        session.commit()
 
 #_______________________________________________________________________________
         
@@ -427,73 +483,77 @@ class Program(Base):
         
 
     def CreateNearestWorkout(self):
-        print("todo: add check if there is not already a todays session")
         int_next_work_weekday = current_program.GetNextSessionWeekday()
         self.CreateWorkoutsForNearestWeekday(int_next_work_weekday)
     
     def CreateWorkoutsForNearestWeekday(self, weekday : int):
+        print("todo: add check if there is any workout planned for today. show them and dont duplicate")
         day_work_elements = current_program.GetWorkForWeekday(weekday).all()
         if len(day_work_elements)==0:
             print(f"program {self.name} does not contain work for {Int_To_Weekday(weekday)}")
             return
         date = DateOfNearestSpecificDayOfWeek(weekday)
         print(f"creating workouts for nearest: {Int_To_Weekday(weekday)}   {date}\n\n")
+        print(*day_work_elements)
      
       # go through groups and get max max_worksets among them
         largest_max_worksets_among_all_days_groups = 0
+        
         for workday_model in day_work_elements:
-            if workday_model.max_worksets < largest_max_worksets_among_all_days_groups:
+            if workday_model.max_worksets > largest_max_worksets_among_all_days_groups:
                 largest_max_worksets_among_all_days_groups = workday_model.max_worksets
- 
         # create as many workouts and hold them in a list
         newWorkouts = []
         for i in range(largest_max_worksets_among_all_days_groups):
             required = 1
+
             print("todo - when to mark workouts as not required for progression")
 
-            newWorkout = Workout(planned_date = date ,is_required_for_progression = 1)
+            newWorkout = Workout(date_planned = date ,is_required_for_progression = 1)
             WRITE_TO_DATABASE(session, newWorkout)
             newWorkouts.append(newWorkout)
-        # for each workout call PlanSequence
+        # list exercise groups to include and  for each workout call PlanSequence
+        # im using list so that this method works with both 2 and 3 group workouts
         groups = []
         for workday_model in day_work_elements:
+            print(f"i will append to workout sequence    : {workday_model.group.name}")
             groups.append(workday_model.group)
         group1 = groups[0]
         group2 = groups[1]
         group3 = None
+
         if len(groups)>2:
             group3 = groups[2]
-        
+
+        ##  calling PLAN       
         for workout in newWorkouts:
+            print(f"i will now plan work including {group1.name}, {group2.name}")
             workout.PlanSequence(group1, group2, group3)
         
+        # #CONSIDER PUTTING THIS IN AN AGGREGATING CLASS
+        # for workday_model in day_work_elements:
+        #     group = workday_model.group
+        #     variant = group.current_variant
+        #     variant_sublevel = group.current_variant_sublevel
+        #     sets_amount = variant.SublevelSetsAmount(variant_sublevel)
+        #     reps_in_set = variant.SublevelRepsInSet(variant_sublevel)
+        #     min_worksets = workday_model.min_worksets
+        #     max_worksets = workday_model.max_worksets
+        #     unit = "reps"
+        #     if variant.read_reps_as_seconds:
+        #         unit = "seconds"
 
+        #     print(variant.name)
+        #     print(f"{min_worksets} to {max_worksets} workouts of:")
+        #     print(f"        {sets_amount} sets of {reps_in_set} {unit}")
 
-        #CONSIDER PUTTING THIS IN AN AGGREGATING CLASS
-        for workday_model in day_work_elements:
-            group = workday_model.group
-            variant = group.current_variant
-            variant_sublevel = group.current_variant_sublevel
-            sets_amount = variant.SublevelSetsAmount(variant_sublevel)
-            reps_in_set = variant.SublevelRepsInSet(variant_sublevel)
-            min_worksets = workday_model.min_worksets
-            max_worksets = workday_model.max_worksets
-            unit = "reps"
-            if variant.read_reps_as_seconds:
-                unit = "seconds"
-
-            print(variant.name)
-            print(f"{min_worksets} to {max_worksets} workouts of:")
-            print(f"        {sets_amount} sets of {reps_in_set} {unit}")
-
-            for i in range(max_worksets):
-                required = 1
-                if i > (min_worksets-1):
-                    print("\n if i > (min_worksets-1):")
-                    print(f" i = {i} ")
-                    print(f"min worksets  = {min_worksets}")
-                    required = 0
-            NewWorkout = Workout(date_planned = date)
+            # for i in range(max_worksets):
+            #     required = 1
+            #     if i > (min_worksets-1):
+            #         print("\n if i > (min_worksets-1):")
+            #         print(f" i = {i} ")
+            #         print(f"min worksets  = {min_worksets}")
+            #         required = 0
 
         
 
@@ -545,6 +605,10 @@ program_schedule = current_program.GetSchedule()
 print("\n\n PROGRAM START\n\n")
 
 print(f"user.id : {user.id}")
+
+user.set_workout_time(1,9,0)
+user.set_workout_time(2,14,0)
+user.set_workout_time(3,19,0)
 print(f"program : {current_program.name} \n")
 current_program.printSchedule(program_schedule)
 
