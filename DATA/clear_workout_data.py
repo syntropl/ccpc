@@ -27,7 +27,7 @@ def ClearWorkoutData():
     finally:
         session.close()
 
-    print("Tables cleared successfully.")
+    print("\n\n\n\n\n\n WORKOUTS AND VARIANT_PLANNED_OR_EXECUTED tables cleared.\n\n\n\n\n\n\n\n")
 
 if __name__ == "__main__":
     ClearWorkoutData()
